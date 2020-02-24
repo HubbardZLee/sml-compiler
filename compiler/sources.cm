@@ -1,0 +1,34 @@
+Group is
+
+ $/basis.cm
+ $/smlnj-lib.cm
+ $/ml-yacc-lib.cm
+
+errormsg.sml
+symbol.sml
+table.sig  table.sml
+absyn.sml
+heap.sig heap.sml
+eval.sig eval.sml
+pp.sig pp.sml
+funpp.sig funpp.sml
+
+(* parser *)
+fun.lex
+fun.grm
+parse.sml
+
+(* typecheck *)
+typecheck.sml
+
+(* mips AST and code generator *)
+mips.sig mips.sml
+codegen.sml
+
+compile.sml
+
+(* xMips emulator *)
+emulator.sml
+words.sml
+xmips.sml
+test.sml

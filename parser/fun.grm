@@ -1,0 +1,110 @@
+structure A = Absyn
+structure S = Symbol
+structure E = ErrorMsg
+
+%%
+
+%pos E.pos
+%verbose
+%eop EOF
+%noshift EOF
+%name Fun
+%term 
+    ID of string | INT of int | PROJ of int | POS of int * int 
+    | 
+    FUN | LPAREN | RPAREN | COLON | COMMA | SEMICOLON
+    |
+    PLUS | MINUS | TIMES | LT | GT | EQ | UMINUS 
+    |
+    AND | OR | NOT 
+    |
+    IF | THEN | ELSE | WHILE | DO | LET | IN
+    |
+    ARROW | ASSIGN | BANG | REF 
+    | 
+    EOF 
+
+%nonterm 
+      PROG of A.fundec list
+    | FUNDECLIST of A.fundec list
+    | FUNDEC of A.fundec 
+    | STM of A.exp
+    | EXP of A.exp 
+    | UNBAL_EXP of A.exp
+    | TYPE of A.tp
+
+%left LET IN
+%left SEMICOLON
+%left IF DO WHILE THEN ELSE
+%left ASSIGN
+%left COLON
+%left AND OR
+%left NOT
+%left EQ LT
+%left PLUS MINUS
+%left TIMES 
+%left UMINUS BANG REF PROJ 
+%left LPAREN RPAREN
+
+%%
+
+PROG:
+    FUNDECLIST EOF (FUNDECLIST)
+
+FUNDECLIST:
+    FUNDECLIST FUNDEC (FUNDECLIST @ [FUNDEC])
+  | FUNDEC ([FUNDEC])
+
+FUNDEC:
+    FUN ID LPAREN ID COLON TYPE RPAREN COLON TYPE EQ EXP (((FUNleft, EXPright), (S.symbol ID1, S.symbol ID2, TYPE1, TYPE2, EXP)))
+
+TYPE:
+    COLON TYPE (TYPE)
+  | LPAREN TYPE RPAREN (TYPE)
+  | TYPE COMMA TYPE (A.Tupletp [TYPE1, TYPE2])
+  | LT GT (A.Tupletp nil)
+  | LT TYPE GT (A.Tupletp [TYPE])
+  | TYPE ARROW TYPE (A.Arrowtp(TYPE1, TYPE2))
+  | TYPE REF (A.Reftp (TYPE))
+  | ID (A.Inttp)
+
+STM:
+    EXP (EXP)
+  | UNBAL_EXP (UNBAL_EXP)
+
+UNBAL_EXP:
+    IF EXP THEN EXP ELSE UNBAL_EXP (A.Pos((IFleft, UNBAL_EXPright), A.If(EXP1, EXP2, UNBAL_EXP)))
+  | IF EXP THEN STM (A.Pos((IFleft, STMright), A.If(EXP, STM, A.Tuple([]))))
+
+EXP:
+    LPAREN EXP RPAREN (A.Pos((LPARENleft, RPARENright), EXP))
+  | ID (A.Pos((IDleft, IDright), A.Id(S.symbol (ID))))
+  | INT (A.Pos((INTleft, INTright), A.Int(INT)))
+  | EXP SEMICOLON EXP (A.Pos((EXP1left, EXP2right), EXP1); A.Pos((EXP1left, EXP2right), EXP2))
+  | MINUS INT %prec UMINUS (A.Pos((MINUSleft, INTright), A.Int(~INT))) 
+  | MINUS ID %prec UMINUS (A.Pos((MINUSleft, IDright), A.Id(S.symbol (ID)))) 
+  | NOT EXP (if EXP = A.Int(0) then A.Pos((NOTleft, EXPright), A.Int(1)) else A.Pos((NOTleft, EXPright), A.Int(0)))
+  | BANG EXP (A.Pos((BANGleft, EXPright), A.Op(A.Get, [EXP])))
+  | PROJ EXP (A.Pos((PROJleft, EXPright), A.Proj(PROJ, EXP)))
+  | EXP PLUS EXP (A.Pos((EXP1left, EXP2right), A.Op(A.Add, [EXP1, EXP2])))
+  | EXP MINUS EXP (A.Pos((EXP1left, EXP2right), A.Op(A.Sub, [EXP1, EXP2])))
+  | EXP TIMES EXP (A.Pos((EXP1left, EXP2right), A.Op(A.Mul, [EXP1, EXP2])))
+  | EXP AND EXP (let val e1 = EXP1; val e2 = EXP2; in if e1 = A.Int(0) then A.Pos((EXP1left, EXP2right), A.Int(0)) else
+                                                        if e2 = A.Int(0) then A.Pos((EXP1left, EXP2right), A.Int(0)) else 
+                                                        A.Pos((EXP1left, EXP2right), A.Int(0)) end)
+  | EXP OR EXP (let val e1 = EXP1; val e2 = EXP2; in if e1 = A.Int(0) then if e2 = A.Int(0) then A.Pos((EXP1left, EXP2right), A.Int(0)) else
+                                                        A.Pos((EXP1left, EXP2right), A.Int(1)) else A.Pos((EXP1left, EXP2right), A.Int(1)) end)
+  | EXP EQ EXP (A.Pos((EXP1left, EXP2right), A.Op(A.Eq, [EXP1, EXP2])))
+  | EXP LT EXP (A.Pos((EXP1left, EXP2right), A.Op(A.LT, [EXP1, EXP2])))
+  | EXP ASSIGN EXP (A.Pos((EXP1left, EXP2right), A.Op(A.Set, [EXP1, EXP2])))
+  | LT EXP GT (A.Pos((LTleft, GTright), A.Tuple(EXP::nil)))
+  | EXP COMMA EXP (A.Pos((EXP1left, EXP2right), A.Tuple([EXP1, EXP2])))
+  | LT GT (A.Pos((LTleft, GTright), A.Tuple([])))
+  | EXP LPAREN EXP RPAREN (A.Pos((EXP1left, RPARENright), A.Call(EXP1, EXP2)))
+  | EXP TYPE (A.Pos((EXPleft, TYPEright), A.Constrain(EXP, TYPE)))
+  | IF EXP THEN EXP ELSE EXP (A.Pos((IFleft, EXP3right), A.If(EXP1, EXP2, EXP3)))
+  | IF EXP THEN STM (A.Pos((IFleft, STMright), A.If(EXP, STM, A.Tuple([]))))
+  | WHILE EXP DO EXP (A.Pos((WHILEleft, EXP2right), A.While(EXP1, EXP2)))
+  | LET ID EQ EXP IN EXP (A.Pos((LETleft, EXP2right), A.Let(S.symbol(ID), EXP1, EXP2)))
+  | REF EXP (A.Pos((REFleft, EXPright), A.Op(A.Ref, [EXP])))
+
